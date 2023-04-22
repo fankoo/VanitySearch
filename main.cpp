@@ -56,6 +56,8 @@ void printUsage() {
   printf(" -nosse: Disable SSE hash function\n");
   printf(" -l: List cuda enabled devices\n");
   printf(" -check: Check CPU and GPU kernel vs CPU\n");
+  printf(" -sk startKey: Specify startkey\n");
+  printf(" -sb subblock: Specify sub block pre thread,default is 25 (2^25)\n");
   printf(" -cp privKey: Compute public key (privKey in hex hormat)\n");
   printf(" -ca pubKey: Compute address (pubKey in hex hormat)\n");
   printf(" -kp: Generate key pair\n");
@@ -166,7 +168,7 @@ void parseFile(string fileName, vector<string> &lines) {
 void generateKeyPair(Secp256K1 *secp, string seed, int searchMode,bool paranoiacSeed) {
 
   if (seed.length() < 8) {
-    printf("Error: Use a seed of at least 8 characters to generate a key pair\n");
+    printf("Error: Use a seed of at leats 8 characters to generate a key pair\n");
     printf("Ex: VanitySearch -s \"A Strong Password\" -kp\n");
     exit(-1);
   }
@@ -389,6 +391,8 @@ int main(int argc, char* argv[]) {
   vector<int> gridSize;
   string seed = "";
   vector<string> prefix;
+  Int startKey;
+  int subBlock = 25;
   string outputFile = "";
   int nbCPUThread = Timer::getCoreNumber();
   bool tSpecified = false;
@@ -448,6 +452,14 @@ int main(int argc, char* argv[]) {
     } else if (strcmp(argv[a], "-kp") == 0) {
       generateKeyPair(secp,seed,searchMode,paranoiacSeed);
       exit(0);
+    } else if (strcmp(argv[a], "-sk") == 0) {
+      a++;
+      startKey.SetBase16(argv[a]);
+      a++;
+    } else if (strcmp(argv[a], "-sb") == 0) {
+      a++;
+      subBlock = getInt("subBlock",argv[a]);
+      a++;
     } else if (strcmp(argv[a], "-sp") == 0) {
       a++;
       string pub = string(argv[a]);
@@ -567,7 +579,7 @@ int main(int argc, char* argv[]) {
   }
 
   VanitySearch *v = new VanitySearch(secp, prefix, seed, searchMode, gpuEnable, stop, outputFile, sse,
-    maxFound, rekey, caseSensitive, startPuKey, paranoiacSeed);
+    maxFound, startKey, subBlock, rekey, caseSensitive, startPuKey, paranoiacSeed);
   v->Search(nbCPUThread,gpuId,gridSize);
 
   return 0;

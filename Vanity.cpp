@@ -39,7 +39,7 @@ Point _2Gn;
 // ----------------------------------------------------------------------------
 
 VanitySearch::VanitySearch(Secp256K1 *secp, vector<std::string> &inputPrefixes,string seed,int searchMode,
-                           bool useGpu, bool stop, string outputFile, bool useSSE, uint32_t maxFound,
+                           bool useGpu, bool stop, string outputFile, bool useSSE, uint32_t maxFound,Int startKey,int subBlock,
                            uint64_t rekey, bool caseSensitive, Point &startPubKey, bool paranoiacSeed)
   :inputPrefixes(inputPrefixes) {
 
@@ -51,6 +51,8 @@ VanitySearch::VanitySearch(Secp256K1 *secp, vector<std::string> &inputPrefixes,s
   this->useSSE = useSSE;
   this->nbGPUThread = 0;
   this->maxFound = maxFound;
+  this->startKey = startKey;
+  this->subBlock = subBlock;
   this->rekey = rekey;
   this->searchType = -1;
   this->startPubKey = startPubKey;
@@ -296,15 +298,16 @@ VanitySearch::VanitySearch(Secp256K1 *secp, vector<std::string> &inputPrefixes,s
   if (paranoiacSeed) {
     seed += Timer::getSeed(32);
   }
-
-  // Protect seed against "seed search attack" using pbkdf2_hmac_sha512
-  string salt = "VanitySearch";
-  unsigned char hseed[64];
-  pbkdf2_hmac_sha512(hseed, 64, (const uint8_t *)seed.c_str(), seed.length(),
-    (const uint8_t *)salt.c_str(), salt.length(),
-    2048);
-  startKey.SetInt32(0);
-  sha256(hseed, 64, (unsigned char *)startKey.bits64);
+  if (startKey.IsZero()){
+    // Protect seed against "seed search attack" using pbkdf2_hmac_sha512
+    string salt = "VanitySearch";
+    unsigned char hseed[64];
+    pbkdf2_hmac_sha512(hseed, 64, (const uint8_t *)seed.c_str(), seed.length(),
+      (const uint8_t *)salt.c_str(), salt.length(),
+      2048);
+    startKey.SetInt32(0);
+    sha256(hseed, 64, (unsigned char *)startKey.bits64);
+  }
 
   char *ctimeBuff;
   time_t now = time(NULL);
@@ -698,17 +701,17 @@ void VanitySearch::output(string addr,string pAddr,string pAddrHex) {
 
   } else {
 
-    switch (searchType) {
-    case P2PKH:
-      fprintf(f, "Priv (WIF): p2pkh:%s\n", pAddr.c_str());
-      break;
-    case P2SH:
-      fprintf(f, "Priv (WIF): p2wpkh-p2sh:%s\n", pAddr.c_str());
-      break;
-    case BECH32:
-      fprintf(f, "Priv (WIF): p2wpkh:%s\n", pAddr.c_str());
-      break;
-    }
+    // switch (searchType) {
+    // case P2PKH:
+    //   fprintf(f, "Priv (WIF): p2pkh:%s\n", pAddr.c_str());
+    //   break;
+    // case P2SH:
+    //   fprintf(f, "Priv (WIF): p2wpkh-p2sh:%s\n", pAddr.c_str());
+    //   break;
+    // case BECH32:
+    //   fprintf(f, "Priv (WIF): p2wpkh:%s\n", pAddr.c_str());
+    //   break;
+    // }
     fprintf(f, "Priv (HEX): 0x%s\n", pAddrHex.c_str());
 
   }
@@ -784,16 +787,16 @@ bool VanitySearch::checkPrivKey(string addr, Int &key, int32_t incr, int endomor
   }
 
   // Endomorphisms
-  switch (endomorphism) {
-  case 1:
-    k.ModMulK1order(&lambda);
-    if(startPubKeySpecified) sp.x.ModMulK1(&beta);
-    break;
-  case 2:
-    k.ModMulK1order(&lambda2);
-    if (startPubKeySpecified) sp.x.ModMulK1(&beta2);
-    break;
-  }
+  // switch (endomorphism) {
+  // case 1:
+  //   k.ModMulK1order(&lambda);
+  //   if(startPubKeySpecified) sp.x.ModMulK1(&beta);
+  //   break;
+  // case 2:
+  //   k.ModMulK1order(&lambda2);
+  //   if (startPubKeySpecified) sp.x.ModMulK1(&beta2);
+  //   break;
+  // }
 
   // Check addresses
   Point p = secp->ComputePublicKey(&k);
@@ -890,56 +893,56 @@ void VanitySearch::checkAddrSSE(uint8_t *h1, uint8_t *h2, uint8_t *h3, uint8_t *
 
 void VanitySearch::checkAddr(int prefIdx, uint8_t *hash160, Int &key, int32_t incr, int endomorphism, bool mode) {
 
-  if (hasPattern) {
+  // if (hasPattern) {
 
-    // Wildcard search
-    string addr = secp->GetAddress(searchType, mode, hash160);
+  //   // Wildcard search
+  //   string addr = secp->GetAddress(searchType, mode, hash160);
 
-    for (int i = 0; i < (int)inputPrefixes.size(); i++) {
+  //   for (int i = 0; i < (int)inputPrefixes.size(); i++) {
 
-      if (Wildcard::match(addr.c_str(), inputPrefixes[i].c_str(), caseSensitive)) {
+  //     if (Wildcard::match(addr.c_str(), inputPrefixes[i].c_str(), caseSensitive)) {
 
-        // Found it !
-        //*((*pi)[i].found) = true;
-        if (checkPrivKey(addr, key, incr, endomorphism, mode)) {
-          nbFoundKey++;
-          patternFound[i] = true;
-          updateFound();
-        }
+  //       // Found it !
+  //       //*((*pi)[i].found) = true;
+  //       if (checkPrivKey(addr, key, incr, endomorphism, mode)) {
+  //         nbFoundKey++;
+  //         patternFound[i] = true;
+  //         updateFound();
+  //       }
 
-      }
+  //     }
 
-    }
+  //   }
 
-    return;
+  //   return;
 
-  }
+  // }
 
   vector<PREFIX_ITEM> *pi = prefixes[prefIdx].items;
 
-  if (onlyFull) {
+  // if (onlyFull) {
 
-    // Full addresses
-    for (int i = 0; i < (int)pi->size(); i++) {
+  //   // Full addresses
+  //   for (int i = 0; i < (int)pi->size(); i++) {
 
-      if (stopWhenFound && *((*pi)[i].found))
-        continue;
+  //     if (stopWhenFound && *((*pi)[i].found))
+  //       continue;
 
-      if (ripemd160_comp_hash((*pi)[i].hash160, hash160)) {
+  //     if (ripemd160_comp_hash((*pi)[i].hash160, hash160)) {
 
-        // Found it !
-        *((*pi)[i].found) = true;
-        // You believe it ?
-        if (checkPrivKey(secp->GetAddress(searchType, mode, hash160), key, incr, endomorphism, mode)) {
-          nbFoundKey++;
-          updateFound();
-        }
+  //       // Found it !
+  //       *((*pi)[i].found) = true;
+  //       // You believe it ?
+  //       if (checkPrivKey(secp->GetAddress(searchType, mode, hash160), key, incr, endomorphism, mode)) {
+  //         nbFoundKey++;
+  //         updateFound();
+  //       }
 
-      }
+  //     }
 
-    }
+  //   }
 
-  } else {
+  // } else {
 
 
     char a[64];
@@ -960,14 +963,14 @@ void VanitySearch::checkAddr(int prefIdx, uint8_t *hash160, Int &key, int32_t in
         *((*pi)[i].found) = true;
         if (checkPrivKey(addr, key, incr, endomorphism, mode)) {
           nbFoundKey++;
-          updateFound();
+          // updateFound();
         }
 
       }
 
     }
 
-  }
+  // }
 
 }
 
@@ -1073,192 +1076,195 @@ void VanitySearch::checkAddressesSSE(bool compressed,Int key, int i, Point p1, P
   // Point -------------------------------------------------------------------------
   secp->GetHash160(searchType, compressed, p1, p2, p3, p4, h0, h1, h2, h3);
 
-  if (!hasPattern) {
+  uint32_t testh0 = *(uint32_t *)h0;
+  uint32_t testh1 = *(uint32_t *)h1;
+  uint32_t testh2 = *(uint32_t *)h2;
+  uint32_t testh3 = *(uint32_t *)h3;
 
+  if (testh0 == 0x3D13E43E) {
     pr0 = *(prefix_t *)h0;
-    pr1 = *(prefix_t *)h1;
-    pr2 = *(prefix_t *)h2;
-    pr3 = *(prefix_t *)h3;
-
     if (prefixes[pr0].items)
       checkAddr(pr0, h0, key, i, 0, compressed);
+  }else if (testh1 == 0x3D13E43E) {
+    pr1 = *(prefix_t *)h1;
     if (prefixes[pr1].items)
       checkAddr(pr1, h1, key, i + 1, 0, compressed);
+  }else if (testh2 == 0x3D13E43E) {
+    pr2 = *(prefix_t *)h2;
     if (prefixes[pr2].items)
       checkAddr(pr2, h2, key, i + 2, 0, compressed);
+  }else if (testh3 == 0x3D13E43E) {
+    pr3 = *(prefix_t *)h3;
     if (prefixes[pr3].items)
       checkAddr(pr3, h3, key, i + 3, 0, compressed);
-
-  } else {
-
-    checkAddrSSE(h0,h1,h2,h3,i,i+1,i+2,i+3,key,0,compressed);
-
-  }
-
-  // Endomorphism #1
-  // if (x, y) = k * G, then (beta*x, y) = lambda*k*G
-  pte1[0].x.ModMulK1(&p1.x, &beta);
-  pte1[0].y.Set(&p1.y);
-  pte1[1].x.ModMulK1(&p2.x, &beta);
-  pte1[1].y.Set(&p2.y);
-  pte1[2].x.ModMulK1(&p3.x, &beta);
-  pte1[2].y.Set(&p3.y);
-  pte1[3].x.ModMulK1(&p4.x, &beta);
-  pte1[3].y.Set(&p4.y);
-
-  secp->GetHash160(searchType, compressed, pte1[0], pte1[1], pte1[2], pte1[3], h0, h1, h2, h3);
-
-  if (!hasPattern) {
-
-    pr0 = *(prefix_t *)h0;
-    pr1 = *(prefix_t *)h1;
-    pr2 = *(prefix_t *)h2;
-    pr3 = *(prefix_t *)h3;
-
-    if (prefixes[pr0].items)
-      checkAddr(pr0, h0, key, i, 1, compressed);
-    if (prefixes[pr1].items)
-      checkAddr(pr1, h1, key, (i + 1), 1, compressed);
-    if (prefixes[pr2].items)
-      checkAddr(pr2, h2, key, (i + 2), 1, compressed);
-    if (prefixes[pr3].items)
-      checkAddr(pr3, h3, key, (i + 3), 1, compressed);
-
-  } else {
-
-    checkAddrSSE(h0, h1, h2, h3, i, i + 1, i + 2, i + 3, key, 1, compressed);
-
-  }
-
-  // Endomorphism #2
-  // if (x, y) = k * G, then (beta2*x, y) = lambda2*k*G
-  pte2[0].x.ModMulK1(&p1.x, &beta2);
-  pte2[0].y.Set(&p1.y);
-  pte2[1].x.ModMulK1(&p2.x, &beta2);
-  pte2[1].y.Set(&p2.y);
-  pte2[2].x.ModMulK1(&p3.x, &beta2);
-  pte2[2].y.Set(&p3.y);
-  pte2[3].x.ModMulK1(&p4.x, &beta2);
-  pte2[3].y.Set(&p4.y);
-
-  secp->GetHash160(searchType, compressed, pte2[0], pte2[1], pte2[2], pte2[3], h0, h1, h2, h3);
-
-  if (!hasPattern) {
-
-    pr0 = *(prefix_t *)h0;
-    pr1 = *(prefix_t *)h1;
-    pr2 = *(prefix_t *)h2;
-    pr3 = *(prefix_t *)h3;
-
-    if (prefixes[pr0].items)
-      checkAddr(pr0, h0, key, i, 2, compressed);
-    if (prefixes[pr1].items)
-      checkAddr(pr1, h1, key, (i + 1), 2, compressed);
-    if (prefixes[pr2].items)
-      checkAddr(pr2, h2, key, (i + 2), 2, compressed);
-    if (prefixes[pr3].items)
-      checkAddr(pr3, h3, key, (i + 3), 2, compressed);
-
-  } else {
-
-    checkAddrSSE(h0, h1, h2, h3, i, i + 1, i + 2, i + 3, key, 2, compressed);
-
-  }
-
-  // Curve symetrie -------------------------------------------------------------------------
-  // if (x,y) = k*G, then (x, -y) is -k*G
-
-  p1.y.ModNeg();
-  p2.y.ModNeg();
-  p3.y.ModNeg();
-  p4.y.ModNeg();
-
-  secp->GetHash160(searchType, compressed, p1, p2, p3, p4, h0, h1, h2, h3);
-
-  if (!hasPattern) {
-
-    pr0 = *(prefix_t *)h0;
-    pr1 = *(prefix_t *)h1;
-    pr2 = *(prefix_t *)h2;
-    pr3 = *(prefix_t *)h3;
-
-    if (prefixes[pr0].items)
-      checkAddr(pr0, h0, key, -i, 0, compressed);
-    if (prefixes[pr1].items)
-      checkAddr(pr1, h1, key, -(i + 1), 0, compressed);
-    if (prefixes[pr2].items)
-      checkAddr(pr2, h2, key, -(i + 2), 0, compressed);
-    if (prefixes[pr3].items)
-      checkAddr(pr3, h3, key, -(i + 3), 0, compressed);
-
-  } else {
-
-    checkAddrSSE(h0, h1, h2, h3, -i, -(i + 1), -(i + 2), -(i + 3), key, 0, compressed);
-
-  }
-
-  // Endomorphism #1
-  // if (x, y) = k * G, then (beta*x, y) = lambda*k*G
-  pte1[0].y.ModNeg();
-  pte1[1].y.ModNeg();
-  pte1[2].y.ModNeg();
-  pte1[3].y.ModNeg();
+}
 
 
-  secp->GetHash160(searchType, compressed, pte1[0], pte1[1], pte1[2], pte1[3], h0, h1, h2, h3);
 
-  if (!hasPattern) {
+  // // Endomorphism #1
+  // // if (x, y) = k * G, then (beta*x, y) = lambda*k*G
+  // pte1[0].x.ModMulK1(&p1.x, &beta);
+  // pte1[0].y.Set(&p1.y);
+  // pte1[1].x.ModMulK1(&p2.x, &beta);
+  // pte1[1].y.Set(&p2.y);
+  // pte1[2].x.ModMulK1(&p3.x, &beta);
+  // pte1[2].y.Set(&p3.y);
+  // pte1[3].x.ModMulK1(&p4.x, &beta);
+  // pte1[3].y.Set(&p4.y);
 
-    pr0 = *(prefix_t *)h0;
-    pr1 = *(prefix_t *)h1;
-    pr2 = *(prefix_t *)h2;
-    pr3 = *(prefix_t *)h3;
+  // secp->GetHash160(searchType, compressed, pte1[0], pte1[1], pte1[2], pte1[3], h0, h1, h2, h3);
 
-    if (prefixes[pr0].items)
-      checkAddr(pr0, h0, key, -i, 1, compressed);
-    if (prefixes[pr1].items)
-      checkAddr(pr1, h1, key, -(i + 1), 1, compressed);
-    if (prefixes[pr2].items)
-      checkAddr(pr2, h2, key, -(i + 2), 1, compressed);
-    if (prefixes[pr3].items)
-      checkAddr(pr3, h3, key, -(i + 3), 1, compressed);
+  // if (!hasPattern) {
 
-  } else {
+  //   pr0 = *(prefix_t *)h0;
+  //   pr1 = *(prefix_t *)h1;
+  //   pr2 = *(prefix_t *)h2;
+  //   pr3 = *(prefix_t *)h3;
 
-    checkAddrSSE(h0, h1, h2, h3, -i, -(i + 1), -(i + 2), -(i + 3), key, 1, compressed);
+  //   if (prefixes[pr0].items)
+  //     checkAddr(pr0, h0, key, i, 1, compressed);
+  //   if (prefixes[pr1].items)
+  //     checkAddr(pr1, h1, key, (i + 1), 1, compressed);
+  //   if (prefixes[pr2].items)
+  //     checkAddr(pr2, h2, key, (i + 2), 1, compressed);
+  //   if (prefixes[pr3].items)
+  //     checkAddr(pr3, h3, key, (i + 3), 1, compressed);
 
-  }
+  // } else {
 
-  // Endomorphism #2
-  // if (x, y) = k * G, then (beta2*x, y) = lambda2*k*G
-  pte2[0].y.ModNeg();
-  pte2[1].y.ModNeg();
-  pte2[2].y.ModNeg();
-  pte2[3].y.ModNeg();
+  //   checkAddrSSE(h0, h1, h2, h3, i, i + 1, i + 2, i + 3, key, 1, compressed);
 
-  secp->GetHash160(searchType, compressed, pte2[0], pte2[1], pte2[2], pte2[3], h0, h1, h2, h3);
+  // }
 
-  if (!hasPattern) {
+  // // Endomorphism #2
+  // // if (x, y) = k * G, then (beta2*x, y) = lambda2*k*G
+  // pte2[0].x.ModMulK1(&p1.x, &beta2);
+  // pte2[0].y.Set(&p1.y);
+  // pte2[1].x.ModMulK1(&p2.x, &beta2);
+  // pte2[1].y.Set(&p2.y);
+  // pte2[2].x.ModMulK1(&p3.x, &beta2);
+  // pte2[2].y.Set(&p3.y);
+  // pte2[3].x.ModMulK1(&p4.x, &beta2);
+  // pte2[3].y.Set(&p4.y);
 
-    pr0 = *(prefix_t *)h0;
-    pr1 = *(prefix_t *)h1;
-    pr2 = *(prefix_t *)h2;
-    pr3 = *(prefix_t *)h3;
+  // secp->GetHash160(searchType, compressed, pte2[0], pte2[1], pte2[2], pte2[3], h0, h1, h2, h3);
 
-    if (prefixes[pr0].items)
-      checkAddr(pr0, h0, key, -i, 2, compressed);
-    if (prefixes[pr1].items)
-      checkAddr(pr1, h1, key, -(i + 1), 2, compressed);
-    if (prefixes[pr2].items)
-      checkAddr(pr2, h2, key, -(i + 2), 2, compressed);
-    if (prefixes[pr3].items)
-      checkAddr(pr3, h3, key, -(i + 3), 2, compressed);
+  // if (!hasPattern) {
 
-  } else {
+  //   pr0 = *(prefix_t *)h0;
+  //   pr1 = *(prefix_t *)h1;
+  //   pr2 = *(prefix_t *)h2;
+  //   pr3 = *(prefix_t *)h3;
 
-    checkAddrSSE(h0, h1, h2, h3, -i, -(i + 1), -(i + 2), -(i + 3), key, 2, compressed);
+  //   if (prefixes[pr0].items)
+  //     checkAddr(pr0, h0, key, i, 2, compressed);
+  //   if (prefixes[pr1].items)
+  //     checkAddr(pr1, h1, key, (i + 1), 2, compressed);
+  //   if (prefixes[pr2].items)
+  //     checkAddr(pr2, h2, key, (i + 2), 2, compressed);
+  //   if (prefixes[pr3].items)
+  //     checkAddr(pr3, h3, key, (i + 3), 2, compressed);
 
-  }
+  // } else {
+
+  //   checkAddrSSE(h0, h1, h2, h3, i, i + 1, i + 2, i + 3, key, 2, compressed);
+
+  // }
+
+  // // Curve symetrie -------------------------------------------------------------------------
+  // // if (x,y) = k*G, then (x, -y) is -k*G
+
+  // p1.y.ModNeg();
+  // p2.y.ModNeg();
+  // p3.y.ModNeg();
+  // p4.y.ModNeg();
+
+  // secp->GetHash160(searchType, compressed, p1, p2, p3, p4, h0, h1, h2, h3);
+
+  // if (!hasPattern) {
+
+  //   pr0 = *(prefix_t *)h0;
+  //   pr1 = *(prefix_t *)h1;
+  //   pr2 = *(prefix_t *)h2;
+  //   pr3 = *(prefix_t *)h3;
+
+  //   if (prefixes[pr0].items)
+  //     checkAddr(pr0, h0, key, -i, 0, compressed);
+  //   if (prefixes[pr1].items)
+  //     checkAddr(pr1, h1, key, -(i + 1), 0, compressed);
+  //   if (prefixes[pr2].items)
+  //     checkAddr(pr2, h2, key, -(i + 2), 0, compressed);
+  //   if (prefixes[pr3].items)
+  //     checkAddr(pr3, h3, key, -(i + 3), 0, compressed);
+
+  // } else {
+
+  //   checkAddrSSE(h0, h1, h2, h3, -i, -(i + 1), -(i + 2), -(i + 3), key, 0, compressed);
+
+  // }
+
+  // // Endomorphism #1
+  // // if (x, y) = k * G, then (beta*x, y) = lambda*k*G
+  // pte1[0].y.ModNeg();
+  // pte1[1].y.ModNeg();
+  // pte1[2].y.ModNeg();
+  // pte1[3].y.ModNeg();
+
+
+  // secp->GetHash160(searchType, compressed, pte1[0], pte1[1], pte1[2], pte1[3], h0, h1, h2, h3);
+
+  // if (!hasPattern) {
+
+  //   pr0 = *(prefix_t *)h0;
+  //   pr1 = *(prefix_t *)h1;
+  //   pr2 = *(prefix_t *)h2;
+  //   pr3 = *(prefix_t *)h3;
+
+  //   if (prefixes[pr0].items)
+  //     checkAddr(pr0, h0, key, -i, 1, compressed);
+  //   if (prefixes[pr1].items)
+  //     checkAddr(pr1, h1, key, -(i + 1), 1, compressed);
+  //   if (prefixes[pr2].items)
+  //     checkAddr(pr2, h2, key, -(i + 2), 1, compressed);
+  //   if (prefixes[pr3].items)
+  //     checkAddr(pr3, h3, key, -(i + 3), 1, compressed);
+
+  // } else {
+
+  //   checkAddrSSE(h0, h1, h2, h3, -i, -(i + 1), -(i + 2), -(i + 3), key, 1, compressed);
+
+  // }
+
+  // // Endomorphism #2
+  // // if (x, y) = k * G, then (beta2*x, y) = lambda2*k*G
+  // pte2[0].y.ModNeg();
+  // pte2[1].y.ModNeg();
+  // pte2[2].y.ModNeg();
+  // pte2[3].y.ModNeg();
+
+  // secp->GetHash160(searchType, compressed, pte2[0], pte2[1], pte2[2], pte2[3], h0, h1, h2, h3);
+
+  // if (!hasPattern) {
+
+  //   pr0 = *(prefix_t *)h0;
+  //   pr1 = *(prefix_t *)h1;
+  //   pr2 = *(prefix_t *)h2;
+  //   pr3 = *(prefix_t *)h3;
+
+  //   if (prefixes[pr0].items)
+  //     checkAddr(pr0, h0, key, -i, 2, compressed);
+  //   if (prefixes[pr1].items)
+  //     checkAddr(pr1, h1, key, -(i + 1), 2, compressed);
+  //   if (prefixes[pr2].items)
+  //     checkAddr(pr2, h2, key, -(i + 2), 2, compressed);
+  //   if (prefixes[pr3].items)
+  //     checkAddr(pr3, h3, key, -(i + 3), 2, compressed);
+
+  // } else {
+
+  //   checkAddrSSE(h0, h1, h2, h3, -i, -(i + 1), -(i + 2), -(i + 3), key, 2, compressed);
+
+  // }
 
 }
 
@@ -1270,11 +1276,12 @@ void VanitySearch::getCPUStartingKey(int thId,Int& key,Point& startP) {
   } else {
     key.Set(&startKey);
     Int off((int64_t)thId);
-    off.ShiftL(64);
+    off.ShiftL(subBlock);
     key.Add(&off);
   }
   Int km(&key);
   km.Add((uint64_t)CPU_GRP_SIZE / 2);
+  ::printf("[%d]StartKey:%s\n", thId, km.GetBase16().c_str());
   startP = secp->ComputePublicKey(&km);
   if(startPubKeySpecified)
    startP = secp->AddDirect(startP,startPubKey);
@@ -1294,7 +1301,9 @@ void VanitySearch::FindKeyCPU(TH_PARAM *ph) {
   Int  key;
   Point startP;
   getCPUStartingKey(thId,key,startP);
-
+  // ::printf("key:%s\n", key.GetBase16().c_str());
+  // ::printf("x:%s\n", startP.x.GetBase16().c_str());
+  // ::printf("y:%s\n", startP.y.GetBase16().c_str());
   Int dx[CPU_GRP_SIZE/2+1];
   Point pts[CPU_GRP_SIZE];
 
@@ -1302,6 +1311,7 @@ void VanitySearch::FindKeyCPU(TH_PARAM *ph) {
   Int dyn;
   Int _s;
   Int _p;
+  uint64_t _subBlock = 0;
   Point pp;
   Point pn;
   grp->Set(dx);
@@ -1309,7 +1319,7 @@ void VanitySearch::FindKeyCPU(TH_PARAM *ph) {
   ph->hasStarted = true;
   ph->rekeyRequest = false;
 
-  while (!endOfSearch) {
+  while (!endOfSearch && (_subBlock < 1ULL<<subBlock)) {
 
     if (ph->rekeyRequest) {
       getCPUStartingKey(thId, key, startP);
@@ -1433,6 +1443,9 @@ void VanitySearch::FindKeyCPU(TH_PARAM *ph) {
 
         switch (searchMode) {
           case SEARCH_COMPRESSED:
+            // ::printf("key:%s\n", key.GetBase16().c_str());
+            // ::printf("pts[%d]x:%s\n", i, pts[i].x.GetBase16().c_str());
+            // ::printf("pts[%d]y:%s\n", i, pts[i].y.GetBase16().c_str());
             checkAddressesSSE(true, key, i, pts[i], pts[i + 1], pts[i + 2], pts[i + 3]);
             break;
           case SEARCH_UNCOMPRESSED:
@@ -1467,8 +1480,9 @@ void VanitySearch::FindKeyCPU(TH_PARAM *ph) {
 
     }
 
+    _subBlock += CPU_GRP_SIZE;
     key.Add((uint64_t)CPU_GRP_SIZE);
-    counters[thId]+= 6*CPU_GRP_SIZE; // Point + endo #1 + endo #2 + Symetric point + endo #1 + endo #2
+    counters[thId]+= 1*CPU_GRP_SIZE; // Point + endo #1 + endo #2 + Symetric point + endo #1 + endo #2
 
   }
 
@@ -1486,18 +1500,26 @@ void VanitySearch::getGPUStartingKeys(int thId, int groupSize, int nbThread, Int
     } else {
       keys[i].Set(&startKey);
       Int offT((uint64_t)i);
-      offT.ShiftL(80);
+      offT.ShiftL(subBlock);
       Int offG((uint64_t)thId);
-      offG.ShiftL(112);
+      offG.ShiftL(49);
       keys[i].Add(&offT);
       keys[i].Add(&offG);
     }
     Int k(keys + i);
-    // Starting key is at the middle of the group
-    k.Add((uint64_t)(groupSize / 2));
-    p[i] = secp->ComputePublicKey(&k);
-    if (startPubKeySpecified)
-      p[i] = secp->AddDirect(p[i], startPubKey);
+    if (i == 0)
+      ::printf("StartKey:0x%s\n", k.GetBase16().c_str());
+    else if (i == nbThread - 1) {
+      Int tmp((uint64_t)1);
+      tmp.ShiftL(subBlock);
+      tmp.Add(&k);
+      ::printf("EndKey  :0x%s\n", tmp.GetBase16().c_str());
+    }
+      // Starting key is at the middle of the group
+      k.Add((uint64_t)(groupSize / 2));
+      p[i] = secp->ComputePublicKey(&k);
+      if (startPubKeySpecified)
+        p[i] = secp->AddDirect(p[i], startPubKey);
   }
 
 }
@@ -1515,6 +1537,7 @@ void VanitySearch::FindKeyGPU(TH_PARAM *ph) {
   Point *p = new Point[nbThread];
   Int *keys = new Int[nbThread];
   vector<ITEM> found;
+  uint64_t _subBlock = 0;
 
   printf("GPU: %s\n",g.deviceName.c_str());
 
@@ -1533,20 +1556,20 @@ void VanitySearch::FindKeyGPU(TH_PARAM *ph) {
       g.SetPrefix(usedPrefix);
   }
 
-  getGPUStartingKeys(thId, g.GetGroupSize(), nbThread, keys, p);
+  // getGPUStartingKeys(thId, g.GetGroupSize(), nbThread, keys, p);
   ok = g.SetKeys(p);
   ph->rekeyRequest = false;
 
   ph->hasStarted = true;
 
   // GPU Thread
-  while (ok && !endOfSearch) {
+    while (ok && !endOfSearch && (_subBlock < 1ULL<<subBlock)) {
 
-    if (ph->rekeyRequest) {
-      getGPUStartingKeys(thId, g.GetGroupSize(), nbThread, keys, p);
-      ok = g.SetKeys(p);
-      ph->rekeyRequest = false;
-    }
+    // if (ph->rekeyRequest) {
+    //   getGPUStartingKeys(thId, g.GetGroupSize(), nbThread, keys, p);
+    //   ok = g.SetKeys(p);
+    //   ph->rekeyRequest = false;
+    // }
 
     // Call kernel
     ok = g.Launch(found);
@@ -1562,7 +1585,8 @@ void VanitySearch::FindKeyGPU(TH_PARAM *ph) {
       for (int i = 0; i < nbThread; i++) {
         keys[i].Add((uint64_t)STEP_SIZE);
       }
-      counters[thId] += 6ULL * STEP_SIZE * nbThread; // Point +  endo1 + endo2 + symetrics
+      counters[thId] += 1ULL * STEP_SIZE * nbThread; // Point +  endo1 + endo2 + symetrics
+      _subBlock += CPU_GRP_SIZE;
     }
 
   }
@@ -1718,10 +1742,10 @@ void VanitySearch::Search(int nbThread,std::vector<int> gpuId,std::vector<int> g
 
   while (isAlive(params)) {
 
-    int delay = 2000;
+    int delay = 30000;
     while (isAlive(params) && delay>0) {
-      Timer::SleepMillis(500);
-      delay -= 500;
+      Timer::SleepMillis(1000);
+      delay -= 1000;
     }
 
     gpuCount = getGPUCount();

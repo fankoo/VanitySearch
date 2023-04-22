@@ -71,7 +71,7 @@ class VanitySearch {
 public:
 
   VanitySearch(Secp256K1 *secp, std::vector<std::string> &prefix, std::string seed, int searchMode,
-               bool useGpu,bool stop,std::string outputFile, bool useSSE,uint32_t maxFound,uint64_t rekey,
+               bool useGpu,bool stop,std::string outputFile, bool useSSE,uint32_t maxFound,Int startKey,int subBlock, uint64_t rekey,
                bool caseSensitive,Point &startPubKey,bool paranoiacSeed);
 
   void Search(int nbThread,std::vector<int> gpuId,std::vector<int> gridSize);
@@ -121,6 +121,7 @@ private:
   int nbCPUThread;
   int nbGPUThread;
   int nbFoundKey;
+  int subBlock;
   uint64_t rekey;
   uint64_t lastRekey;
   uint32_t nbPrefix;
