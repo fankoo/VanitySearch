@@ -455,42 +455,42 @@ void GPUEngine::SetPrefix(std::vector<LPREFIX> prefixes, uint32_t totalPrefix) {
 
 bool GPUEngine::callKernel() {
 
-  // Reset nbFound
-  cudaMemset(outputPrefix,0,4);
+  // // Reset nbFound
+  // cudaMemset(outputPrefix,0,4);
 
   // Call the kernel (Perform STEP_SIZE keys per thread)
-  if (searchType == P2SH) {
+  // if (searchType == P2SH) {
 
-    if (hasPattern) {
-      comp_keys_p2sh_pattern << < nbThread / nbThreadPerGroup, nbThreadPerGroup >> >
-        (searchMode, inputPrefix, inputKey, maxFound, outputPrefix);
-    } else {
-      comp_keys_p2sh << < nbThread / nbThreadPerGroup, nbThreadPerGroup >> >
-        (searchMode, inputPrefix, inputPrefixLookUp, inputKey, maxFound, outputPrefix);
-    }
+  //   if (hasPattern) {
+  //     comp_keys_p2sh_pattern << < nbThread / nbThreadPerGroup, nbThreadPerGroup >> >
+  //       (searchMode, inputPrefix, inputKey, maxFound, outputPrefix);
+  //   } else {
+  //     comp_keys_p2sh << < nbThread / nbThreadPerGroup, nbThreadPerGroup >> >
+  //       (searchMode, inputPrefix, inputPrefixLookUp, inputKey, maxFound, outputPrefix);
+  //   }
 
-  } else {
+  // } else {
 
-    // P2PKH or BECH32
-    if (hasPattern) {
-      if (searchType == BECH32) {
-        // TODO
-        printf("GPUEngine: (TODO) BECH32 not yet supported with wildard\n");
-        return false;
-      }
-      comp_keys_pattern << < nbThread / nbThreadPerGroup, nbThreadPerGroup >> >
-        (searchMode, inputPrefix, inputKey, maxFound, outputPrefix);
-    } else {
-      if (searchMode == SEARCH_COMPRESSED) {
-        comp_keys_comp << < nbThread / nbThreadPerGroup, nbThreadPerGroup >> >
-          (inputPrefix, inputPrefixLookUp, inputKey, maxFound, outputPrefix);
-      } else {
-        comp_keys << < nbThread / nbThreadPerGroup, nbThreadPerGroup >> >
+  //   // P2PKH or BECH32
+  //   if (hasPattern) {
+  //     if (searchType == BECH32) {
+  //       // TODO
+  //       printf("GPUEngine: (TODO) BECH32 not yet supported with wildard\n");
+  //       return false;
+  //     }
+  //     comp_keys_pattern << < nbThread / nbThreadPerGroup, nbThreadPerGroup >> >
+  //       (searchMode, inputPrefix, inputKey, maxFound, outputPrefix);
+  //   } else {
+  //     if (searchMode == SEARCH_COMPRESSED) {
+        // comp_keys_comp <<< nbThread / nbThreadPerGroup, nbThreadPerGroup >>>
+        //   (inputPrefix, inputPrefixLookUp, inputKey, maxFound, outputPrefix);
+    //   } else {
+        comp_keys <<< nbThread / nbThreadPerGroup, nbThreadPerGroup >>>
           (searchMode, inputPrefix, inputPrefixLookUp, inputKey, maxFound, outputPrefix);
-      }
-    }
+    //   }
+    // }
 
-  }
+  // }
 
   cudaError_t err = cudaGetLastError();
   if (err != cudaSuccess) {
@@ -546,24 +546,24 @@ bool GPUEngine::Launch(std::vector<ITEM> &prefixFound,bool spinWait) {
 
   // Get the result
 
-  if(spinWait) {
+  // if(spinWait) {
 
-    cudaMemcpy(outputPrefixPinned, outputPrefix, outputSize, cudaMemcpyDeviceToHost);
+  //   cudaMemcpy(outputPrefixPinned, outputPrefix, outputSize, cudaMemcpyDeviceToHost);
 
-  } else {
+  // } else {
 
     // Use cudaMemcpyAsync to avoid default spin wait of cudaMemcpy wich takes 100% CPU
-    cudaEvent_t evt;
-    cudaEventCreate(&evt);
+    // cudaEvent_t evt;
+    // cudaEventCreate(&evt);
     cudaMemcpyAsync(outputPrefixPinned, outputPrefix, 4, cudaMemcpyDeviceToHost, 0);
-    cudaEventRecord(evt, 0);
-    while (cudaEventQuery(evt) == cudaErrorNotReady) {
+    // cudaEventRecord(evt, 0);
+    while (cudaStreamQuery(0) == cudaErrorNotReady) {
       // Sleep 1 ms to free the CPU
       Timer::SleepMillis(1);
     }
-    cudaEventDestroy(evt);
+    // cudaEventDestroy(evt);
 
-  }
+  // }
 
   cudaError_t err = cudaGetLastError();
   if (err != cudaSuccess) {
@@ -573,15 +573,16 @@ bool GPUEngine::Launch(std::vector<ITEM> &prefixFound,bool spinWait) {
 
   // Look for prefix found
   uint32_t nbFound = outputPrefixPinned[0];
-  if (nbFound > maxFound) {
-    // prefix has been lost
-    if (!lostWarning) {
-      printf("\nWarning, %d items lost\nHint: Search with less prefixes, less threads (-g) or increase maxFound (-m)\n", (nbFound - maxFound));
-      lostWarning = true;
-    }
-    nbFound = maxFound;
-  }
+  // if (nbFound > maxFound) {
+  //   // prefix has been lost
+  //   if (!lostWarning) {
+  //     printf("\nWarning, %d items lost\nHint: Search with less prefixes, less threads (-g) or increase maxFound (-m)\n", (nbFound - maxFound));
+  //     lostWarning = true;
+  //   }
+  //   nbFound = maxFound;
+  // }
 
+  if (nbFound > 0) {
   // When can perform a standard copy, the kernel is eneded
   cudaMemcpy( outputPrefixPinned , outputPrefix , nbFound*ITEM_SIZE + 4 , cudaMemcpyDeviceToHost);
 
@@ -595,6 +596,9 @@ bool GPUEngine::Launch(std::vector<ITEM> &prefixFound,bool spinWait) {
     it.incr = ptr[1];
     it.hash = (uint8_t *)(itemPtr + 2);
     prefixFound.push_back(it);
+  }
+    // Reset nbFound
+    cudaMemset(outputPrefix,0,4);
   }
 
   return callKernel();
